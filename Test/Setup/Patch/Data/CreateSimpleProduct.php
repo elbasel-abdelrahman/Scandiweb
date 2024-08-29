@@ -1,6 +1,11 @@
 <?php
 
-declare(strict_types=1);
+/**
+ * @category    Scandiweb
+ * @package     Scandiweb_Test
+ * @author      Abdelrahman Elbasel <abdelrahman.elbasel@scandiweb.com>
+ * @copyright   Copyright (c) 2021 Scandiweb, Ltd (https://scandiweb.com)
+ */
 
 namespace Scandiweb\Test\Setup\Patch\Data;
 
@@ -13,79 +18,156 @@ use Magento\Catalog\Model\Product\Type;
 use Magento\Catalog\Model\Product\Visibility;
 use Magento\Eav\Setup\EavSetup;
 use Magento\Framework\App\State;
-use Magento\Framework\Setup\ModuleDataSetupInterface;
+use Magento\Framework\Exception\CouldNotSaveException;
+use Magento\Framework\Exception\InputException;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Setup\Patch\DataPatchInterface;
+use Magento\Framework\Validation\ValidationException;
+use Magento\InventoryApi\Api\Data\SourceItemInterface;
+use Magento\InventoryApi\Api\Data\SourceItemInterfaceFactory;
+use Magento\InventoryApi\Api\SourceItemsSaveInterface;
 use Magento\Store\Model\StoreManagerInterface;
 
+/**
+ * Create Migration product class
+ */
 class CreateSimpleProduct implements DataPatchInterface
 {
-    protected ModuleDataSetupInterface $setup;
+    /**
+     * @var ProductInterfaceFactory
+     */
     protected ProductInterfaceFactory $productInterfaceFactory;
-    protected ProductRepositoryInterface $productRepository;
-    protected State $appState;
-    protected EavSetup $eavSetup;
-    protected StoreManagerInterface $storeManager;
-    protected CategoryLinkManagementInterface $categoryLink;
 
+    /**
+     * @var ProductRepositoryInterface
+     */
+    protected ProductRepositoryInterface $productRepository;
+
+    /**
+     * @var State
+     */
+    protected State $appState;
+
+    /**
+     * @var StoreManagerInterface
+     */
+    protected StoreManagerInterface $storeManager;
+
+    /**
+     * @var SourceItemInterfaceFactory
+     */
+    protected SourceItemInterfaceFactory $sourceItemFactory;
+
+    /**
+     * @var SourceItemsSaveInterface
+     */
+    protected SourceItemsSaveInterface $sourceItemsSaveInterface;
+
+    /**
+     * @var EavSetup
+     */
+    protected EavSetup $eavSetup;
+
+    /**
+     * @var array
+     */
+    protected array $sourceItems = [];
+
+    /**
+     * Migration patch constructor.
+     *
+     * @param ProductInterfaceFactory $productInterfaceFactory
+     * @param ProductRepositoryInterface $productRepository
+     * @param SourceItemInterfaceFactory $sourceItemFactory
+     * @param SourceItemsSaveInterface $sourceItemsSaveInterface
+     * @param State $appState
+     * @param StoreManagerInterface $storeManager
+     * @param EavSetup $eavSetup
+     * @param CategoryLinkManagementInterface $categoryLink
+     */
     public function __construct(
-        ModuleDataSetupInterface $setup,
         ProductInterfaceFactory $productInterfaceFactory,
         ProductRepositoryInterface $productRepository,
         State $appState,
         StoreManagerInterface $storeManager,
         EavSetup $eavSetup,
+        SourceItemInterfaceFactory $sourceItemFactory,
+        SourceItemsSaveInterface $sourceItemsSaveInterface,
         CategoryLinkManagementInterface $categoryLink
     ) {
         $this->appState = $appState;
         $this->productInterfaceFactory = $productInterfaceFactory;
         $this->productRepository = $productRepository;
-        $this->setup = $setup;
         $this->eavSetup = $eavSetup;
         $this->storeManager = $storeManager;
+        $this->sourceItemFactory = $sourceItemFactory;
+        $this->sourceItemsSaveInterface = $sourceItemsSaveInterface;
         $this->categoryLink = $categoryLink;
     }
 
-    public static function getDependencies(): array
-    {
-        return [];
-    }
-
-    public function getAliases(): array
-    {
-        return [];
-    }
-
+    /**
+     * Add new product
+     */
     public function apply(): void
     {
         $this->appState->emulateAreaCode('adminhtml', [$this, 'execute']);
     }
 
+    /**
+     * @throws CouldNotSaveException
+     * @throws InputException
+     * @throws LocalizedException
+     * @throws NoSuchEntityException
+     * @throws ValidationException
+     */
     public function execute(): void
     {
         $product = $this->productInterfaceFactory->create();
 
-        // Check if the product already exists
-        if ($product->getIdBySku('funky-sku')) {
+        if ($product->getIdBySku('some-product-sku')) {
             return;
         }
 
-        // Get the attribute set ID for 'Default'
         $attributeSetId = $this->eavSetup->getAttributeSetId(Product::ENTITY, 'Default');
-
-        // Set product data
+        $websiteIDs = [$this->storeManager->getStore()->getWebsiteId()];
         $product->setTypeId(Type::TYPE_SIMPLE)
+            ->setWebsiteIds($websiteIDs)
             ->setAttributeSetId($attributeSetId)
-            ->setName('Tesla X')
-            ->setSku('funny-sku')
-            ->setUrlKey('the-url-should-be-here-somewhere')
+            ->setName('Some Product Name')
+            ->setUrlKey('some-product-name')
+            ->setSku('some-product-sku')
             ->setPrice(9.99)
             ->setVisibility(Visibility::VISIBILITY_BOTH)
-            ->setStatus(Status::STATUS_ENABLED);
-
-        // Save the product
+            ->setStatus(Status::STATUS_ENABLED)
+            ->setStockData(['use_config_manage_stock' => 1, 'is_qty_decimal' => 0, 'is_in_stock' => 1]);
         $product = $this->productRepository->save($product);
 
-        // Assign product to categories
+        $sourceItem = $this->sourceItemFactory->create();
+        $sourceItem->setSourceCode('default');
+        $sourceItem->setQuantity(99);
+        $sourceItem->setSku($product->getSku());
+        $sourceItem->setStatus(SourceItemInterface::STATUS_IN_STOCK);
+        $this->sourceItems[] = $sourceItem;
+
+        $this->sourceItemsSaveInterface->execute($this->sourceItems);
+
         $this->categoryLink->assignProductToCategories($product->getSku(), [2]);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public static function getDependencies(): array
+    {
+        return [];
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getAliases(): array
+    {
+        return [];
     }
 }

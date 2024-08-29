@@ -1,11 +1,12 @@
 <?php
-
 /**
  * @category    Scandiweb
  * @package     Scandiweb_Test
  * @author      Abdelrahman Elbasel <abdelrahman.elbasel@scandiweb.com>
- * @copyright   Copyright (c) 2021 Scandiweb, Ltd (https://scandiweb.com)
+ * @copyright   Copyright (c) 2024 Scandiweb, Ltd (https://scandiweb.com)
  */
+
+declare(strict_types=1);
 
 namespace Scandiweb\Test\Setup\Patch\Data;
 
@@ -53,6 +54,11 @@ class CreateSimpleProduct implements DataPatchInterface
      * @var StoreManagerInterface
      */
     protected StoreManagerInterface $storeManager;
+
+    /**
+    * @var CategoryLinkManagementInterface
+     */
+    protected CategoryLinkManagementInterface $categoryLink;
 
     /**
      * @var SourceItemInterfaceFactory
